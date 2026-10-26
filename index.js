@@ -765,6 +765,73 @@ async function submitToStore(ctx, payload) {
   }
 }
 
+const syncCache = new Map()
+
+async function syncStatus(ctx, payload) {
+  const dirs = Array.isArray(payload?.dirs)
+    ? [...new Set(payload.dirs.filter((dir) => typeof dir === 'string'))].slice(0, 20)
+    : []
+  const token = await readToken(ctx)
+  if (!token) return fail('no-token', '还没有保存 GitHub token')
+  const git = await resolveGit(ctx)
+  const { candidates } = listCandidates(ctx)
+  const out = {}
+  for (const dir of dirs) {
+    const key = resolve(dir)
+    const cached = syncCache.get(key)
+    if (cached && Date.now() - cached.at < 20000) {
+      out[key] = cached.value
+      continue
+    }
+    const candidate = candidates.find((entry) => resolve(entry.dir) === key)
+    if (!candidate?.repoSlug) {
+      out[key] = { skip: true }
+      continue
+    }
+    const head = await runGit(ctx, git, ['rev-parse', 'HEAD'], { cwd: key })
+    if (head.exitCode !== 0) {
+      out[key] = { error: 'no-head' }
+      continue
+    }
+    const localSha = head.output.trim().split('\n')[0]
+    const dirtyResult = await runGit(ctx, git, ['status', '--porcelain'], { cwd: key })
+    const dirty = dirtyResult.output.trim() !== ''
+    const branchResult = await runGit(ctx, git, ['branch', '--show-current'], { cwd: key })
+    const branch = branchResult.output.trim() || 'main'
+    const value = { dirty, localSha, branch }
+    const remote = await github(
+      '/repos/' + candidate.repoSlug + '/commits/' + encodeURIComponent(branch),
+      token,
+    )
+    if (remote.status === 200 && typeof remote.data?.sha === 'string') {
+      value.remoteSha = remote.data.sha
+      if (remote.data.sha === localSha) {
+        value.upToDate = !dirty
+        value.ahead = 0
+        value.behind = 0
+      } else {
+        const compare = await github(
+          '/repos/' + candidate.repoSlug + '/compare/' + remote.data.sha + '...' + localSha,
+          token,
+        )
+        if (compare.status === 200) {
+          value.compare = compare.data.status
+          value.ahead = Number(compare.data.ahead_by || 0)
+          value.behind = Number(compare.data.behind_by || 0)
+          value.upToDate = !dirty && value.ahead === 0 && value.behind === 0
+        }
+      }
+    } else if (remote.status === 404) {
+      value.error = 'remote-branch'
+    }
+    value.needsPush = dirty || Number(value.ahead || 0) > 0 || value.compare === 'diverged'
+    value.needsPull = Number(value.behind || 0) > 0 || value.compare === 'diverged'
+    syncCache.set(key, { at: Date.now(), value })
+    out[key] = value
+  }
+  return { ok: true, value: { dirs: out } }
+}
+
 function route(ctx, path, handler) {
   const connection = ctx.get('connection')
   if (!connection?.fetch?.register) return undefined
@@ -839,6 +906,11 @@ export function apply(ctx) {
   ctx.effect(
     () => route(ctx, '/api/github-publish/submit', async (payload) => submitToStore(ctx, payload)),
     'github-publish: submit route',
+  )
+
+  ctx.effect(
+    () => route(ctx, '/api/github-publish/sync', async (payload) => syncStatus(ctx, payload)),
+    'github-publish: sync route',
   )
 }
 

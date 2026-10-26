@@ -91,6 +91,12 @@ window.__ModuleLoader__.load({
       pushUpdate: '推送更新',
       confirmPush: '确认推送',
       confirmUpdate: '会提交当前目录的改动并推送到已有仓库，然后照常更新。确认？',
+      upToDate: '已是最新',
+      pendingChanges: '有未提交改动',
+      aheadCount: '待推送',
+      behindCount: '落后',
+      checking: '检查中…',
+      pullFirst: '远端有新提交，先拉取再推送',
       catDev: '开发与运行时',
       catUi: '界面增强',
       catTheme: '主题外观',
@@ -199,6 +205,12 @@ window.__ModuleLoader__.load({
       pushUpdate: 'Push update',
       confirmPush: 'Confirm push',
       confirmUpdate: 'Commits the changes in this directory and pushes them to the existing repository. Continue?',
+      upToDate: 'Up to date',
+      pendingChanges: 'Uncommitted changes',
+      aheadCount: 'to push',
+      behindCount: 'behind',
+      checking: 'Checking…',
+      pullFirst: 'Remote has new commits; pull before pushing',
       catDev: 'Development & Runtime',
       catUi: 'UI Enhancements',
       catTheme: 'Themes & Appearance',
@@ -386,6 +398,7 @@ window.__ModuleLoader__.load({
           const [categories, setCategories] = React.useState({})
           const [submitting, setSubmitting] = React.useState(null)
           const [submitInfo, setSubmitInfo] = React.useState(null)
+          const [sync, setSync] = React.useState({})
           const pollRef = React.useRef(null)
 
           const stopPoll = React.useCallback(() => {
@@ -460,6 +473,31 @@ window.__ModuleLoader__.load({
               setReposError(errorText(error))
             }
           }, [token.configured, tick])
+
+          const loadSync = React.useCallback(async () => {
+            const dirs = (list.items || []).filter((item) => item.repoSlug).map((item) => item.dir)
+            if (dirs.length === 0 || !token.configured) {
+              setSync({})
+              return
+            }
+            try {
+              const value = await callHost('sync', { dirs })
+              setSync(value?.dirs || {})
+            } catch {
+              /* keep the previous state */
+            }
+          }, [list.items, token.configured])
+
+          React.useEffect(() => {
+            loadSync()
+          }, [loadSync])
+
+          React.useEffect(() => {
+            const timer = setInterval(() => {
+              if (document.visibilityState === 'visible' && !busy) loadSync()
+            }, 20000)
+            return () => clearInterval(timer)
+          }, [loadSync, busy])
 
           React.useEffect(() => {
             const slugs = [...new Set((list.items || []).map((item) => item.repoSlug).filter(Boolean))]
@@ -726,6 +764,9 @@ window.__ModuleLoader__.load({
             const isListed = Boolean(item.repoSlug && listed[item.repoSlug]?.listed)
             const hasRepo = Boolean(item.repoSlug)
             const category = categories[item.dir] ?? categoryFor(item)
+            const state = sync[item.dir] || null
+            const upToDate = state?.upToDate === true
+            const needsPush = state?.needsPush === true && state?.needsPull !== true
             return h(
               'div',
               { className: 'dsgh-card', key: item.dir },
@@ -756,6 +797,16 @@ window.__ModuleLoader__.load({
                       },
                       '↗ ' + t('listedBadge'),
                     )
+                  : null,
+                hasRepo && upToDate ? h('span', { className: 'dsgh-tag on' }, t('upToDate')) : null,
+                hasRepo && !upToDate && state?.dirty
+                  ? h('span', { className: 'dsgh-tag off' }, t('pendingChanges'))
+                  : null,
+                hasRepo && !upToDate && !state?.dirty && Number(state?.ahead || 0) > 0
+                  ? h('span', { className: 'dsgh-tag off' }, t('aheadCount') + ' ' + state.ahead)
+                  : null,
+                hasRepo && Number(state?.behind || 0) > 0
+                  ? h('span', { className: 'dsgh-tag err' }, t('behindCount') + ' ' + state.behind)
                   : null,
               ),
               h('div', { className: 'dsgh-pkg' }, item.dir),
@@ -822,7 +873,7 @@ window.__ModuleLoader__.load({
                 !hasRepo && isConfirming
                   ? h('button', { type: 'button', className: 'dsgh-btn', onClick: () => setConfirming(null) }, t('cancel'))
                   : null,
-                hasRepo
+                hasRepo && needsPush
                   ? h(
                       'button',
                       {
@@ -834,7 +885,7 @@ window.__ModuleLoader__.load({
                       isBusy ? t('busy') : t('pushUpdate'),
                     )
                   : null,
-                hasRepo && isConfirming
+                hasRepo && needsPush && isConfirming
                   ? h(
                       'button',
                       {
@@ -846,7 +897,7 @@ window.__ModuleLoader__.load({
                       t('confirmPush'),
                     )
                   : null,
-                hasRepo && isConfirming
+                hasRepo && needsPush && isConfirming
                   ? h('button', { type: 'button', className: 'dsgh-btn', onClick: () => setConfirming(null) }, t('cancel'))
                   : null,
                 hasRepo
@@ -904,6 +955,9 @@ window.__ModuleLoader__.load({
                   : null,
               ),
               !hasRepo ? h('p', { className: 'dsgh-hint' }, t('needRepo')) : null,
+              hasRepo && state?.needsPull
+                ? h('p', { className: 'dsgh-hint' }, t('pullFirst'))
+                : null,
               isConfirming ? h('div', { className: 'dsgh-result' }, hasRepo ? t('confirmUpdate') : t('confirmText')) : null,
               submitInfo && submitInfo.dir === item.dir && submitInfo.prUrl
                 ? h(
