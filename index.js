@@ -572,6 +572,27 @@ async function listRepos(ctx) {
 }
 
 const listedCache = new Map()
+const LISTED_TTL = 30 * 60 * 1000
+const CATALOG_RAW =
+  'https://raw.githubusercontent.com/imsai-sh/awesome-deepseek-harness-plugins/main/catalog/plugins/'
+const CATALOG_CDN =
+  'https://cdn.jsdelivr.net/gh/imsai-sh/awesome-deepseek-harness-plugins@main/catalog/plugins/'
+
+async function catalogHasEntry(file) {
+  try {
+    const response = await fetch(CATALOG_RAW + file, { signal: AbortSignal.timeout(8000) })
+    if (response.status === 200) return true
+    if (response.status === 404) return false
+  } catch {
+    /* fall through to the CDN */
+  }
+  try {
+    const response = await fetch(CATALOG_CDN + file, { signal: AbortSignal.timeout(8000) })
+    return response.status === 200
+  } catch {
+    return false
+  }
+}
 
 async function listedStatus(payload) {
   const slugs = Array.isArray(payload?.repos)
@@ -580,24 +601,14 @@ async function listedStatus(payload) {
   const repos = {}
   for (const slug of slugs) {
     const cached = listedCache.get(slug)
-    if (cached && Date.now() - cached.at < 120000) {
+    if (cached && Date.now() - cached.at < LISTED_TTL) {
       repos[slug] = cached.value
       continue
     }
     try {
-      const response = await fetch(
-        'https://api.deepseek1024.com/v1/plugins/search?q=' + encodeURIComponent(slug) + '&limit=10',
-        { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(8000) },
-      )
-      const data = await response.json()
-      const hit = Array.isArray(data?.results) ? data.results.find((entry) => entry.id === slug) : undefined
-      const value = hit
-        ? {
-            listed: true,
-            url: 'https://deepseek1024.com/plugins/' + slug,
-            added: typeof hit.added === 'string' ? hit.added : '',
-            install: typeof hit.install === 'string' ? hit.install : '',
-          }
+      const listed = await catalogHasEntry(catalogFileName(slug))
+      const value = listed
+        ? { listed: true, url: 'https://deepseek1024.com/plugins/' + slug }
         : { listed: false }
       listedCache.set(slug, { at: Date.now(), value })
       repos[slug] = value
