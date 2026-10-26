@@ -105,6 +105,24 @@ function dependencySpecs(manifest) {
   return out
 }
 
+function repoSlugOf(dir) {
+  try {
+    const text = readFileSync(join(dir, '.git', 'config'), 'utf8')
+    const section = text.split('[remote "origin"]')[1]
+    if (!section) return ''
+    const match = section.match(/url\s*=\s*(\S+)/)
+    if (!match) return ''
+    const cleaned = match[1]
+      .trim()
+      .replace(/^git@github\.com:/, '')
+      .replace(/^https?:\/\/github\.com\//, '')
+      .replace(/\.git$/, '')
+    return /^[^/\s]+\/[^/\s]+$/.test(cleaned) ? cleaned : ''
+  } catch {
+    return ''
+  }
+}
+
 function workspaceRootOf(ctx) {
   const dir = ctx.get('workingDirectory')?.defaultDirectory
   if (typeof dir === 'string' && dir) return dir
@@ -133,6 +151,7 @@ function listCandidates(ctx) {
         dependencyName: name,
         installed: true,
         hasGit: existsSync(join(dir, '.git')),
+        repoSlug: repoSlugOf(dir),
       })
     }
   }
@@ -155,6 +174,7 @@ function listCandidates(ctx) {
         dependencyName: '',
         installed: false,
         hasGit: existsSync(join(dir, '.git')),
+        repoSlug: repoSlugOf(dir),
       })
     }
   }
@@ -351,15 +371,17 @@ async function publish(ctx, job, payload) {
   const repoPath = '/repos/' + encodeURIComponent(login) + '/' + encodeURIComponent(repoName)
   const existing = await github(repoPath, token)
   let repoCreated = false
+  let repoUpdate = false
   if (existing.status === 200) {
-    if (Number(existing.data?.size || 0) > 0) {
-      return fail(
-        'repo-exists',
-        'GitHub 上已经有同名的非空仓库 ' + login + '/' + repoName + '，换一个仓库名再试',
-        { steps },
-      )
+    const owner = String(existing.data?.owner?.login || '')
+    if (owner && owner.toLowerCase() !== login.toLowerCase()) {
+      return fail('repo-other-owner', '同名仓库属于 ' + owner + '，换一个仓库名再试', { steps })
     }
-    record('仓库已存在且为空', true, login + '/' + repoName)
+    if (existing.data?.private === true) {
+      return fail('repo-private', '同名仓库是私有的，1024store 抓不到；先把它改成公开再试', { steps })
+    }
+    record('仓库已存在，将推送更新', true, login + '/' + repoName)
+    repoUpdate = true
   } else if (existing.status === 404) {
     const created = await github('/user/repos', token, {
       method: 'POST',
@@ -408,7 +430,7 @@ async function publish(ctx, job, payload) {
         'user.email=' + String(userId) + '+' + login + '@users.noreply.github.com',
         'commit',
         '-m',
-        'Initial commit',
+        repoUpdate ? 'Update from DSH' : 'Initial commit',
       ],
       { cwd: dir },
     )
@@ -446,7 +468,10 @@ async function publish(ctx, job, payload) {
     },
   })
   if (push.exitCode !== 0) {
-    return fail('push-failed', '推送失败\n' + push.output, { steps })
+    const hint = /rejected|non-fast-forward|fetch first|behind its remote/i.test(push.output)
+      ? '\n本地提交和远端历史不一致：先在这个目录里执行 git pull --rebase，或者换一个仓库名。'
+      : ''
+    return fail('push-failed', '推送失败\n' + push.output + hint, { steps })
   }
   record('推送代码', true, branchName)
 
@@ -546,6 +571,200 @@ async function listRepos(ctx) {
   return { ok: true, value: { repos } }
 }
 
+const listedCache = new Map()
+
+async function listedStatus(payload) {
+  const slugs = Array.isArray(payload?.repos)
+    ? [...new Set(payload.repos.filter((slug) => typeof slug === 'string' && /^[^/\s]+\/[^/\s]+$/.test(slug)))].slice(0, 20)
+    : []
+  const repos = {}
+  for (const slug of slugs) {
+    const cached = listedCache.get(slug)
+    if (cached && Date.now() - cached.at < 120000) {
+      repos[slug] = cached.value
+      continue
+    }
+    try {
+      const response = await fetch(
+        'https://api.deepseek1024.com/v1/plugins/search?q=' + encodeURIComponent(slug) + '&limit=10',
+        { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(8000) },
+      )
+      const data = await response.json()
+      const hit = Array.isArray(data?.results) ? data.results.find((entry) => entry.id === slug) : undefined
+      const value = hit
+        ? {
+            listed: true,
+            url: 'https://deepseek1024.com/plugins/' + slug,
+            added: typeof hit.added === 'string' ? hit.added : '',
+            install: typeof hit.install === 'string' ? hit.install : '',
+          }
+        : { listed: false }
+      listedCache.set(slug, { at: Date.now(), value })
+      repos[slug] = value
+    } catch {
+      repos[slug] = { listed: false, error: true }
+    }
+  }
+  return { ok: true, value: { repos } }
+}
+
+const CATEGORIES = new Set([
+  'tools',
+  'ui',
+  'dev',
+  'skill',
+  'session',
+  'model',
+  'workflow',
+  'fun',
+  'notify',
+  'theme',
+  'memory',
+])
+
+const CATALOG_REPO = 'imsai-sh/awesome-deepseek-harness-plugins'
+
+function catalogFileName(id) {
+  return (
+    id
+      .split('/')
+      .map((segment) => segment.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''))
+      .join('--') + '.json'
+  )
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+async function ensureCatalogFork(login, token) {
+  const name = login + '/awesome-deepseek-harness-plugins'
+  let fork = await github('/repos/' + name, token)
+  if (fork.status === 200) return fork.data
+  await github('/repos/' + CATALOG_REPO + '/forks', token, { method: 'POST', body: {} })
+  for (let i = 0; i < 20; i++) {
+    await sleep(3000)
+    fork = await github('/repos/' + name, token)
+    if (fork.status === 200) return fork.data
+  }
+  return undefined
+}
+
+async function submitToStore(ctx, payload) {
+  const dir = typeof payload?.dir === 'string' ? resolve(payload.dir) : ''
+  const { candidates } = listCandidates(ctx)
+  const candidate = candidates.find((entry) => resolve(entry.dir) === dir)
+  if (!candidate) return fail('not-found', '找不到这个插件目录')
+  const slug = candidate.repoSlug
+  if (!slug) return fail('no-repo', '这个插件还没有 GitHub 仓库，先点「发布到 GitHub」')
+
+  const token = await readToken(ctx)
+  if (!token) return fail('no-token', '还没有保存 GitHub token')
+
+  const me = await github('/user', token)
+  if (me.status !== 200 || typeof me.data?.login !== 'string') {
+    return fail('auth', githubMessage(me.status, me.data))
+  }
+  const login = me.data.login
+
+  const repo = await github('/repos/' + slug, token)
+  if (repo.status !== 200) return fail('repo-missing', 'GitHub 上找不到 ' + slug)
+  if (repo.data?.private === true) return fail('private-repo', '仓库是私有的，1024store 抓不到，先改成公开')
+
+  const topics = await github('/repos/' + slug + '/topics', token)
+  const names = new Set(topics.status === 200 && Array.isArray(topics.data?.names) ? topics.data.names : [])
+  if (!names.has(TOPIC)) {
+    names.add(TOPIC)
+    await github('/repos/' + slug + '/topics', token, { method: 'PUT', body: { names: [...names] } })
+  }
+
+  const already = await listedStatus({ repos: [slug] })
+  if (already?.value?.repos?.[slug]?.listed) {
+    return { ok: true, value: { listed: true, url: already.value.repos[slug].url, repo: slug } }
+  }
+
+  const category = CATEGORIES.has(payload?.category) ? payload.category : 'dev'
+  const file = catalogFileName(slug)
+  const filePath = 'catalog/plugins/' + file
+
+  const upstreamFile = await github('/repos/' + CATALOG_REPO + '/contents/' + filePath + '?ref=main', token)
+  if (upstreamFile.status === 200) {
+    return {
+      ok: true,
+      value: { listed: true, pendingSync: true, url: 'https://deepseek1024.com/plugins/' + slug, repo: slug },
+    }
+  }
+
+  const fork = await ensureCatalogFork(login, token)
+  if (!fork) return fail('fork-failed', '创建目录仓库的 fork 失败')
+
+  const base = fork.default_branch || 'main'
+  const baseRef = await github('/repos/' + fork.full_name + '/git/ref/heads/' + base, token)
+  if (baseRef.status !== 200) return fail('base-ref', '读取 fork 的默认分支失败：' + githubMessage(baseRef.status, baseRef.data))
+
+  const branch = 'add-' + file.replace(/\.json$/, '') + '-' + Date.now()
+  const branchRef = await github('/repos/' + fork.full_name + '/git/refs', token, {
+    method: 'POST',
+    body: { ref: 'refs/heads/' + branch, sha: baseRef.data.object.sha },
+  })
+  if (branchRef.status !== 201) {
+    return fail('branch-failed', '创建分支失败：' + githubMessage(branchRef.status, branchRef.data))
+  }
+
+  const description = candidate.description || slug + ' plugin for DeepSeek Harness'
+  const entry = {
+    $schema: '../schema/plugin.schema.json',
+    id: slug,
+    name: slug.split('/')[1] || slug,
+    repository: 'https://github.com/' + slug,
+    category,
+    description: { en: description, zh: description },
+    added: new Date().toISOString().slice(0, 10),
+  }
+
+  const put = await github('/repos/' + fork.full_name + '/contents/' + filePath, token, {
+    method: 'PUT',
+    body: {
+      message: 'Add ' + slug,
+      content: Buffer.from(JSON.stringify(entry, null, 2) + '\n').toString('base64'),
+      branch,
+    },
+  })
+  if (put.status !== 201) {
+    return fail('file-failed', '写入目录条目失败：' + githubMessage(put.status, put.data))
+  }
+
+  const pr = await github('/repos/' + CATALOG_REPO + '/pulls', token, {
+    method: 'POST',
+    body: {
+      title: 'Add ' + slug,
+      head: login + ':' + branch,
+      base: 'main',
+      body:
+        'Adds `' +
+        slug +
+        '` to the catalog.\n\n- id: `' +
+        slug +
+        '`\n- category: `' +
+        category +
+        '`\n- repository is public, carries the `dsh-plugin` topic, and keeps `dsh.bundle.patch` plus the patch file in the default branch',
+    },
+  })
+  if (pr.status !== 201) {
+    return fail('pr-failed', '创建 PR 失败：' + githubMessage(pr.status, pr.data))
+  }
+
+  return {
+    ok: true,
+    value: {
+      listed: false,
+      repo: slug,
+      prUrl: pr.data.html_url,
+      number: pr.data.number,
+    },
+  }
+}
+
 function route(ctx, path, handler) {
   const connection = ctx.get('connection')
   if (!connection?.fetch?.register) return undefined
@@ -610,6 +829,16 @@ export function apply(ctx) {
   ctx.effect(
     () => route(ctx, '/api/github-publish/repos', async () => listRepos(ctx)),
     'github-publish: repos route',
+  )
+
+  ctx.effect(
+    () => route(ctx, '/api/github-publish/listed', async (payload) => listedStatus(payload)),
+    'github-publish: listed route',
+  )
+
+  ctx.effect(
+    () => route(ctx, '/api/github-publish/submit', async (payload) => submitToStore(ctx, payload)),
+    'github-publish: submit route',
   )
 }
 

@@ -81,6 +81,27 @@ window.__ModuleLoader__.load({
       reposNeedToken: '保存 GitHub token 后，这里会列出你的仓库。',
       installedBadge: '已安装',
       notInstalledBadge: '未安装',
+      listedBadge: '已上架',
+      submitToList: '一键上架',
+      submittingToList: '上架中…',
+      submittedToList: '已提交上架申请',
+      prOpened: '已开 PR，合并后几分钟生效：',
+      categoryLabel: '分类',
+      needRepo: '先发布到 GitHub 才能上架',
+      pushUpdate: '推送更新',
+      confirmPush: '确认推送',
+      confirmUpdate: '会提交当前目录的改动并推送到已有仓库，然后照常更新。确认？',
+      catDev: '开发与运行时',
+      catUi: '界面增强',
+      catTheme: '主题外观',
+      catTools: '工具与能力',
+      catWorkflow: '工作流',
+      catFun: '娱乐',
+      catSession: '会话',
+      catMemory: '记忆',
+      catModel: '模型接入',
+      catNotify: '通知集成',
+      catSkill: '技能包',
       scanHint: '扫描目录',
       scanAuto: '新插件放进这个目录会自动出现（每 15 秒检查）。',
       topicBadge: 'dsh-plugin',
@@ -168,6 +189,27 @@ window.__ModuleLoader__.load({
       reposNeedToken: 'Save a GitHub token to list your repositories here.',
       installedBadge: 'Installed',
       notInstalledBadge: 'Not installed',
+      listedBadge: 'Listed',
+      submitToList: 'List on 1024store',
+      submittingToList: 'Submitting…',
+      submittedToList: 'Listing request submitted',
+      prOpened: 'Pull request opened; it goes live a few minutes after merge: ',
+      categoryLabel: 'Category',
+      needRepo: 'Publish to GitHub first',
+      pushUpdate: 'Push update',
+      confirmPush: 'Confirm push',
+      confirmUpdate: 'Commits the changes in this directory and pushes them to the existing repository. Continue?',
+      catDev: 'Development & Runtime',
+      catUi: 'UI Enhancements',
+      catTheme: 'Themes & Appearance',
+      catTools: 'Tools & Capabilities',
+      catWorkflow: 'Workflow & Automation',
+      catFun: 'Just for Fun',
+      catSession: 'Sessions & Messages',
+      catMemory: 'Memory',
+      catModel: 'Models & Providers',
+      catNotify: 'Notifications & Integrations',
+      catSkill: 'Skills',
       scanHint: 'Scanning',
       scanAuto: 'New plugin folders appear here automatically (checked every 15s).',
       topicBadge: 'dsh-plugin',
@@ -202,6 +244,8 @@ window.__ModuleLoader__.load({
 .dsgh-tag.on { color: var(--dsw-alias-state-success-primary); border-color: var(--dsw-alias-state-success-primary); }
 .dsgh-tag.off { color: var(--dsw-alias-state-warn-primary); border-color: var(--dsw-alias-state-warn-primary); }
 .dsgh-tag.err { color: var(--dsw-alias-state-error-primary); border-color: var(--dsw-alias-state-error-primary); }
+.dsgh-tag-link { text-decoration: none; }
+.dsgh-tag-link:hover { filter: brightness(1.15); }
 .dsgh-checks { display: flex; flex-wrap: wrap; gap: 6px 8px; }
 .dsgh-check { display: inline-flex; align-items: center; gap: 5px; padding: 4px 8px; border: 1px solid var(--dsw-alias-border-l1); border-radius: 999px; font-size: 11px; line-height: 1.3; color: var(--dsw-alias-label-secondary); }
 .dsgh-check.ok { color: var(--dsw-alias-state-success-primary); border-color: var(--dsw-alias-state-success-primary); }
@@ -210,6 +254,7 @@ window.__ModuleLoader__.load({
 .dsgh-repo { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .dsgh-label { font-size: 11px; color: var(--dsw-alias-label-secondary); white-space: nowrap; }
 .dsgh-input { flex: 1 1 260px; min-width: 200px; font: inherit; font-size: 12px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--dsw-alias-border-l2); background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-primary); }
+.dsgh-select { font: inherit; font-size: 12px; padding: 7px 8px; border-radius: 8px; border: 1px solid var(--dsw-alias-border-l2); background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-primary); }
 .dsgh-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .dsgh-btn { appearance: none; font: inherit; font-size: 12px; line-height: 1; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--dsw-alias-border-l2); background: transparent; color: var(--dsw-alias-label-primary); cursor: pointer; white-space: nowrap; text-decoration: none; display: inline-flex; align-items: center; gap: 5px; }
 .dsgh-btn:hover:not(:disabled) { background: var(--dsw-alias-bg-layer-2); }
@@ -220,6 +265,7 @@ window.__ModuleLoader__.load({
 .dsgh-btn.small { padding: 6px 9px; font-size: 11px; }
 .dsgh-result { white-space: pre-wrap; overflow-wrap: anywhere; padding: 10px 12px; border: 1px solid var(--dsw-alias-border-l1); border-radius: 8px; background: var(--dsw-alias-bg-layer-2); font-size: 12px; line-height: 1.55; color: var(--dsw-alias-label-secondary); }
 .dsgh-result.err { color: var(--dsw-alias-state-error-primary); }
+.dsgh-result.ok { color: var(--dsw-alias-state-success-primary); }
 .dsgh-empty { padding: 16px; border: 1px dashed var(--dsw-alias-border-l1); border-radius: 10px; text-align: center; font-size: 12px; color: var(--dsw-alias-label-secondary); }
 .dsgh-token { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 14px; border: 1px solid var(--dsw-alias-border-l1); border-radius: 12px; background: var(--dsw-alias-bg-layer-1); }
 .dsgh-banner { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border-radius: 10px; border: 1px solid var(--dsw-alias-border-l1); background: var(--dsw-alias-bg-layer-1); }
@@ -250,6 +296,9 @@ window.__ModuleLoader__.load({
 .dsgh-repo-meta { font-size: 10px; color: var(--dsw-alias-label-secondary); }
 .dsgh-repo-actions { flex: none; display: flex; gap: 6px; align-items: center; }
 .dsgh-links { display: flex; flex-wrap: wrap; gap: 8px; }
+.dsgh-listed-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px; border: 1px solid var(--dsw-alias-state-success-primary); border-radius: 10px; background: var(--dsw-alias-bg-layer-1); }
+.dsgh-listed-link { color: var(--dsw-alias-state-success-primary); text-decoration: none; font-size: 12px; font-weight: 600; }
+.dsgh-listed-link:hover { text-decoration: underline; }
 @media (max-width: 900px) {
   .dsgh-grid { grid-template-columns: 1fr; }
   .dsgh-col-right { position: static; }
@@ -333,6 +382,10 @@ window.__ModuleLoader__.load({
           const [reposError, setReposError] = React.useState('')
           const [reposAt, setReposAt] = React.useState(0)
           const [showAllRepos, setShowAllRepos] = React.useState(false)
+          const [listed, setListed] = React.useState({})
+          const [categories, setCategories] = React.useState({})
+          const [submitting, setSubmitting] = React.useState(null)
+          const [submitInfo, setSubmitInfo] = React.useState(null)
           const pollRef = React.useRef(null)
 
           const stopPoll = React.useCallback(() => {
@@ -407,6 +460,23 @@ window.__ModuleLoader__.load({
               setReposError(errorText(error))
             }
           }, [token.configured, tick])
+
+          React.useEffect(() => {
+            const slugs = [...new Set((list.items || []).map((item) => item.repoSlug).filter(Boolean))]
+            if (slugs.length === 0) {
+              setListed({})
+              return undefined
+            }
+            let cancelled = false
+            callHost('listed', { repos: slugs })
+              .then((value) => {
+                if (!cancelled) setListed(value?.repos || {})
+              })
+              .catch(() => {})
+            return () => {
+              cancelled = true
+            }
+          }, [list.items])
 
           React.useEffect(() => {
             loadList()
@@ -532,7 +602,9 @@ window.__ModuleLoader__.load({
           )
 
           async function runPublish(item) {
-            const repoName = (repoNames[item.dir] ?? repoNameFrom(item.name)).trim()
+            const repoName = (
+              item.repoSlug ? String(item.repoSlug).split('/')[1] : (repoNames[item.dir] ?? repoNameFrom(item.name))
+            ).trim()
             setConfirming(null)
             setBusy(item.dir)
             setJob(null)
@@ -591,6 +663,56 @@ window.__ModuleLoader__.load({
             ]
           }
 
+          function categoryFor(item) {
+            const text = (String(item.name || '') + ' ' + String(item.description || '')).toLowerCase()
+            if (/skin|theme|皮肤|主题/.test(text)) return 'theme'
+            if (/memory|记忆/.test(text)) return 'memory'
+            if (/notify|notification|通知/.test(text)) return 'notify'
+            if (/skill|技能/.test(text)) return 'skill'
+            if (/progress|dashboard|panel|任务|进度|面板/.test(text)) return 'ui'
+            return 'dev'
+          }
+
+          function categoryOptions() {
+            return [
+              ['dev', t('catDev')],
+              ['ui', t('catUi')],
+              ['theme', t('catTheme')],
+              ['tools', t('catTools')],
+              ['workflow', t('catWorkflow')],
+              ['fun', t('catFun')],
+              ['session', t('catSession')],
+              ['memory', t('catMemory')],
+              ['model', t('catModel')],
+              ['notify', t('catNotify')],
+              ['skill', t('catSkill')],
+            ]
+          }
+
+          async function submitOne(item) {
+            setSubmitting(item.dir)
+            setSubmitInfo(null)
+            setNotice(null)
+            try {
+              const value = await callHost('submit', {
+                dir: item.dir,
+                category: categories[item.dir] ?? categoryFor(item),
+              })
+              if (value?.listed) {
+                setNotice({ kind: 'ok', text: t('listedBadge') })
+                setTimeout(() => loadList(true), 1500)
+              } else {
+                setSubmitInfo({ dir: item.dir, prUrl: value?.prUrl || '', number: value?.number })
+                setNotice({ kind: 'ok', text: t('submittedToList') })
+                setTimeout(() => loadList(true), 4000)
+              }
+            } catch (error) {
+              setNotice({ kind: 'error', text: errorText(error) })
+            } finally {
+              setSubmitting(null)
+            }
+          }
+
           function card(item) {
             const checks = checksOf(item)
             const ready = checks.every((check) => check.ok)
@@ -600,6 +722,10 @@ window.__ModuleLoader__.load({
             const repoName = repoNames[item.dir] ?? repoNameFrom(item.name)
             const nameOk = /^[A-Za-z0-9._-]{1,100}$/.test(repoName)
             const canPublish = ready && nameOk && token.configured && !isBusy
+            const isSubmitting = submitting === item.dir
+            const isListed = Boolean(item.repoSlug && listed[item.repoSlug]?.listed)
+            const hasRepo = Boolean(item.repoSlug)
+            const category = categories[item.dir] ?? categoryFor(item)
             return h(
               'div',
               { className: 'dsgh-card', key: item.dir },
@@ -618,6 +744,19 @@ window.__ModuleLoader__.load({
                   { className: 'dsgh-tag ' + (item.hasGit ? 'on' : 'off') },
                   item.hasGit ? t('gitReady') : t('gitFresh'),
                 ),
+                item.repoSlug && listed[item.repoSlug]?.listed
+                  ? h(
+                      'a',
+                      {
+                        className: 'dsgh-tag on dsgh-tag-link',
+                        href: listed[item.repoSlug].url,
+                        target: '_blank',
+                        rel: 'noreferrer',
+                        title: listed[item.repoSlug].url,
+                      },
+                      '↗ ' + t('listedBadge'),
+                    )
+                  : null,
               ),
               h('div', { className: 'dsgh-pkg' }, item.dir),
               item.description ? h('div', { className: 'dsgh-desc' }, item.description) : null,
@@ -635,50 +774,149 @@ window.__ModuleLoader__.load({
               failedHints.length
                 ? h('ul', { className: 'dsgh-hints' }, failedHints.map((hint) => h('li', { key: hint }, hint)))
                 : null,
-              h(
-                'div',
-                { className: 'dsgh-repo' },
-                h('span', { className: 'dsgh-label' }, t('repoName')),
-                h('input', {
-                  className: 'dsgh-input',
-                  value: repoName,
-                  spellCheck: false,
-                  disabled: isBusy,
-                  onChange: (event) =>
-                    setRepoNames((current) => ({ ...current, [item.dir]: event.target.value })),
-                }),
-              ),
-              h(
-                'p',
-                { className: 'dsgh-hint' },
-                t('repoNamespace') + (repoName || '…') + ' · ' + t('repoNameHint'),
-              ),
+              !hasRepo
+                ? h(
+                    'div',
+                    { className: 'dsgh-repo' },
+                    h('span', { className: 'dsgh-label' }, t('repoName')),
+                    h('input', {
+                      className: 'dsgh-input',
+                      value: repoName,
+                      spellCheck: false,
+                      disabled: isBusy,
+                      onChange: (event) =>
+                        setRepoNames((current) => ({ ...current, [item.dir]: event.target.value })),
+                    }),
+                  )
+                : null,
+              !hasRepo
+                ? h(
+                    'p',
+                    { className: 'dsgh-hint' },
+                    t('repoNamespace') + (repoName || '…') + ' · ' + t('repoNameHint'),
+                  )
+                : null,
               h(
                 'div',
                 { className: 'dsgh-actions' },
-                h(
-                  'button',
-                  {
-                    type: 'button',
-                    className: 'dsgh-btn primary',
-                    disabled: !canPublish,
-                    title: !ready ? t('notReady') : !nameOk ? t('badName') : !token.configured ? t('tokenRequired') : '',
-                    onClick: () => setConfirming(isConfirming ? null : item.dir),
-                  },
-                  isBusy ? t('busy') : t('publish'),
-                ),
-                isConfirming
+                !hasRepo
+                  ? h(
+                      'button',
+                      {
+                        type: 'button',
+                        className: 'dsgh-btn primary',
+                        disabled: !canPublish,
+                        title: !ready ? t('notReady') : !nameOk ? t('badName') : !token.configured ? t('tokenRequired') : '',
+                        onClick: () => setConfirming(isConfirming ? null : item.dir),
+                      },
+                      isBusy ? t('busy') : t('publish'),
+                    )
+                  : null,
+                !hasRepo && isConfirming
                   ? h(
                       'button',
                       { type: 'button', className: 'dsgh-btn danger', disabled: isBusy, onClick: () => runPublish(item) },
                       t('confirming'),
                     )
                   : null,
-                isConfirming
+                !hasRepo && isConfirming
                   ? h('button', { type: 'button', className: 'dsgh-btn', onClick: () => setConfirming(null) }, t('cancel'))
                   : null,
+                hasRepo
+                  ? h(
+                      'button',
+                      {
+                        type: 'button',
+                        className: 'dsgh-btn',
+                        disabled: isBusy,
+                        onClick: () => setConfirming(isConfirming ? null : item.dir),
+                      },
+                      isBusy ? t('busy') : t('pushUpdate'),
+                    )
+                  : null,
+                hasRepo && isConfirming
+                  ? h(
+                      'button',
+                      {
+                        type: 'button',
+                        className: 'dsgh-btn danger',
+                        disabled: isBusy,
+                        onClick: () => runPublish(item),
+                      },
+                      t('confirmPush'),
+                    )
+                  : null,
+                hasRepo && isConfirming
+                  ? h('button', { type: 'button', className: 'dsgh-btn', onClick: () => setConfirming(null) }, t('cancel'))
+                  : null,
+                hasRepo
+                  ? h(
+                      'a',
+                      {
+                        className: 'dsgh-btn small',
+                        href: 'https://github.com/' + item.repoSlug,
+                        target: '_blank',
+                        rel: 'noreferrer',
+                      },
+                      'GitHub ↗',
+                    )
+                  : null,
+                hasRepo && !isListed
+                  ? h('span', { className: 'dsgh-label' }, t('categoryLabel'))
+                  : null,
+                hasRepo && !isListed
+                  ? h(
+                      'select',
+                      {
+                        className: 'dsgh-select',
+                        value: category,
+                        disabled: isSubmitting,
+                        onChange: (event) =>
+                          setCategories((current) => ({ ...current, [item.dir]: event.target.value })),
+                      },
+                      categoryOptions().map(([value, label]) => h('option', { key: value, value }, label)),
+                    )
+                  : null,
+                hasRepo && !isListed
+                  ? h(
+                      'button',
+                      {
+                        type: 'button',
+                        className: 'dsgh-btn primary',
+                        disabled: isSubmitting || !token.configured,
+                        title: !token.configured ? t('tokenRequired') : '',
+                        onClick: () => submitOne(item),
+                      },
+                      isSubmitting ? t('submittingToList') : t('submitToList'),
+                    )
+                  : null,
+                hasRepo && isListed
+                  ? h(
+                      'a',
+                      {
+                        className: 'dsgh-btn',
+                        href: listed[item.repoSlug].url,
+                        target: '_blank',
+                        rel: 'noreferrer',
+                      },
+                      '↗ ' + t('listedBadge'),
+                    )
+                  : null,
               ),
-              isConfirming ? h('div', { className: 'dsgh-result' }, t('confirmText')) : null,
+              !hasRepo ? h('p', { className: 'dsgh-hint' }, t('needRepo')) : null,
+              isConfirming ? h('div', { className: 'dsgh-result' }, hasRepo ? t('confirmUpdate') : t('confirmText')) : null,
+              submitInfo && submitInfo.dir === item.dir && submitInfo.prUrl
+                ? h(
+                    'div',
+                    { className: 'dsgh-result ok' },
+                    t('prOpened') + ' ',
+                    h(
+                      'a',
+                      { href: submitInfo.prUrl, target: '_blank', rel: 'noreferrer' },
+                      'PR #' + submitInfo.number,
+                    ),
+                  )
+                : null,
             )
           }
 
@@ -864,6 +1102,7 @@ window.__ModuleLoader__.load({
           }
 
           const items = list.items
+          const listedItems = items.filter((item) => item.repoSlug && listed[item.repoSlug]?.listed)
 
           return h(
             'div',
@@ -937,10 +1176,42 @@ window.__ModuleLoader__.load({
               h(
                 'div',
                 { className: 'dsgh-col' },
+                listedItems.length
+                  ? h(
+                      'div',
+                      { className: 'dsgh-listed-bar' },
+                      h('span', { className: 'dsgh-label' }, t('listedBadge') + ' ' + listedItems.length),
+                      listedItems.map((item) =>
+                        h(
+                          'a',
+                          {
+                            key: item.dir,
+                            className: 'dsgh-listed-link',
+                            href: listed[item.repoSlug].url,
+                            target: '_blank',
+                            rel: 'noreferrer',
+                          },
+                          item.name + ' ↗',
+                        ),
+                      ),
+                    )
+                  : null,
                 h(
                   'section',
                   { className: 'dsgh-section' },
-                  h('h3', null, t('checks') + ' · ' + items.length),
+                  h(
+                    'h3',
+                    null,
+                    t('checks') +
+                      ' · ' +
+                      items.length +
+                      (items.filter((item) => item.repoSlug && listed[item.repoSlug]?.listed).length
+                        ? ' · ' +
+                          t('listedBadge') +
+                          ' ' +
+                          items.filter((item) => item.repoSlug && listed[item.repoSlug]?.listed).length
+                        : ''),
+                  ),
                   list.scanRoot
                     ? h('p', { className: 'dsgh-hint' }, t('scanHint') + ' · ' + list.scanRoot + ' · ' + t('scanAuto'))
                     : list.profileDir
