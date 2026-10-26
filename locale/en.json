@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Publish Plugin",
+    "description": "Publish local plugins to GitHub from the Plugin Market: preflight, repository creation, push, and the dsh-plugin topic."
+  }
+}

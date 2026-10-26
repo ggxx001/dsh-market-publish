@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "插件发布",
+    "description": "在插件市场里把本地插件发布到 GitHub：发布前检查、自动建仓推送、加 dsh-plugin 话题。"
+  }
+}
