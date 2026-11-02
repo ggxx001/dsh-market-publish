@@ -1,10 +1,9 @@
 {
-  "name": "@local/dsh-market-publish",
+  "name": "@ggxx/dsh-market-publish",
   "version": "0.1.0",
   "license": "MIT",
-  "private": true,
   "type": "module",
-  "description": "Publish local plugins to GitHub from the Plugin Market: preflight, repository creation, push, and the dsh-plugin topic.",
+  "description": "把本地插件一键发布到 GitHub 公开仓库、npm 和 1024store 插件目录：发布前检查、自动建仓推送、加 dsh-plugin 话题。",
   "exports": {
     ".": "./index.js",
     "./client": "./client.js",

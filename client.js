@@ -1,11 +1,12 @@
 window.__ModuleLoader__.load({
-  id: '@local/dsh-market-publish',
+  id: '@ggxx/dsh-market-publish',
   factory(require) {
     const React = require('react')
     const h = React.createElement
 
     const NS = 'dshGithubPublish'
     const TOKEN_URL = 'https://github.com/settings/tokens/new?scopes=repo&description=DSH%20plugin%20publish'
+    const NPM_TOKEN_URL = 'https://www.npmjs.com/settings/~/tokens'
 
     const zh = {
       tab: '发布',
@@ -90,7 +91,8 @@ window.__ModuleLoader__.load({
       needRepo: '先发布到 GitHub 才能上架',
       pushUpdate: '推送更新',
       confirmPush: '确认推送',
-      confirmUpdate: '会提交当前目录的改动并推送到已有仓库，然后照常更新。确认？',
+      confirmUpdate: '会提交当前目录的改动、推送到已有仓库、把新版本发到 npm（版本号没变就跳过），再更新目录条目。确认？',
+      confirmUpdateGithub: '只提交当前目录的改动并推送到已有仓库，不发 npm、不改目录条目。确认？',
       upToDate: '已是最新',
       pendingChanges: '有未提交改动',
       aheadCount: '待推送',
@@ -119,6 +121,27 @@ window.__ModuleLoader__.load({
       showLess: '收起',
       autoRefresh: '每 15 秒自动刷新',
       updatedLabel: '更新于',
+      npmTitle: 'npm token',
+      npmSaved: 'npm 已保存',
+      npmMissing: 'npm 未保存',
+      npmPlaceholder: '粘贴 npm Automation token（npm_…）',
+      npmHint:
+        'npmjs.com → Access Tokens → Generate New Token → Automation。只用于把插件发到 registry.npmjs.org；1024store 的安装命令就来自这个包。',
+      npmLink: '生成 npm token ↗',
+      checkNpm: 'npm 包',
+      hintNpm: '包名发不了 npm（private: true、@local scope 或非法字符）。',
+      npmSuggest: '可以改成：',
+      ship: '发布并上架',
+      confirmShip: '会创建公开仓库、推送代码、发 npm 包、再向 1024store 提目录 PR。版本号发出去就不能撤销。确认？',
+      githubOnly: '只发 GitHub',
+      shipUpdate: '推送并更新 npm',
+      npmTokenRequired: '先保存 npm token',
+      npmBlocked: '包名不可发布，先改 package.json',
+      npmPending: 'Host 还没加载 npm 检查——重启 DSH 后这里会显示真实结果',
+      npmSameVersion: '本版本已在 npm，跳过发布',
+      npmOpen: 'npm 页面 ↗',
+      storePr: '目录 PR',
+      storeListedNow: '已在 1024store 目录',
     }
 
     const en = {
@@ -204,7 +227,8 @@ window.__ModuleLoader__.load({
       needRepo: 'Publish to GitHub first',
       pushUpdate: 'Push update',
       confirmPush: 'Confirm push',
-      confirmUpdate: 'Commits the changes in this directory and pushes them to the existing repository. Continue?',
+      confirmUpdate: 'Commits the changes, pushes them, publishes the new version to npm (skipped when the version is unchanged), then updates the catalog entry. Continue?',
+      confirmUpdateGithub: 'Only commits and pushes this directory; no npm publish, no catalog change. Continue?',
       upToDate: 'Up to date',
       pendingChanges: 'Uncommitted changes',
       aheadCount: 'to push',
@@ -233,6 +257,27 @@ window.__ModuleLoader__.load({
       showLess: 'Show less',
       autoRefresh: 'Auto-refresh every 15s',
       updatedLabel: 'Updated',
+      npmTitle: 'npm token',
+      npmSaved: 'npm saved',
+      npmMissing: 'npm not saved',
+      npmPlaceholder: 'Paste an npm Automation token (npm_…)',
+      npmHint:
+        'npmjs.com → Access Tokens → Generate New Token → Automation. Used only to publish to registry.npmjs.org; it is what gives the 1024store page an install command.',
+      npmLink: 'Create an npm token ↗',
+      checkNpm: 'npm package',
+      hintNpm: 'The name cannot be published to npm (private: true, @local scope, or invalid characters).',
+      npmSuggest: 'Try:',
+      ship: 'Publish and list',
+      confirmShip: 'Creates a public repository, pushes, publishes the npm package, then opens the catalog PR. A published version cannot be unpublished. Continue?',
+      githubOnly: 'GitHub only',
+      shipUpdate: 'Push and update npm',
+      npmTokenRequired: 'Save an npm token first',
+      npmBlocked: 'Name cannot be published; fix package.json',
+      npmPending: 'The host has not loaded the npm check yet — restart DSH to see real results',
+      npmSameVersion: 'Version already on npm, skipped',
+      npmOpen: 'npm page ↗',
+      storePr: 'Catalog PR',
+      storeListedNow: 'Already in the 1024store catalog',
     }
 
     const CSS = `
@@ -262,6 +307,7 @@ window.__ModuleLoader__.load({
 .dsgh-check { display: inline-flex; align-items: center; gap: 5px; padding: 4px 8px; border: 1px solid var(--dsw-alias-border-l1); border-radius: 999px; font-size: 11px; line-height: 1.3; color: var(--dsw-alias-label-secondary); }
 .dsgh-check.ok { color: var(--dsw-alias-state-success-primary); border-color: var(--dsw-alias-state-success-primary); }
 .dsgh-check.bad { color: var(--dsw-alias-state-error-primary); border-color: var(--dsw-alias-state-error-primary); }
+.dsgh-check.idle { color: var(--dsw-alias-label-secondary); opacity: .7; }
 .dsgh-hints { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 2px; font-size: 11px; line-height: 1.5; color: var(--dsw-alias-state-warn-primary); }
 .dsgh-repo { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .dsgh-label { font-size: 11px; color: var(--dsw-alias-label-secondary); white-space: nowrap; }
@@ -382,8 +428,12 @@ window.__ModuleLoader__.load({
           const [token, setToken] = React.useState({ available: true, configured: false, writable: true })
           const [draft, setDraft] = React.useState('')
           const [saving, setSaving] = React.useState(false)
+          const [npmToken, setNpmToken] = React.useState({ available: true, configured: false, writable: true })
+          const [npmDraft, setNpmDraft] = React.useState('')
+          const [npmSaving, setNpmSaving] = React.useState(false)
           const [busy, setBusy] = React.useState(null)
           const [confirming, setConfirming] = React.useState(null)
+          const [confirmMode, setConfirmMode] = React.useState('chain')
           const [repoNames, setRepoNames] = React.useState({})
           const [notice, setNotice] = React.useState(null)
           const [job, setJob] = React.useState(null)
@@ -453,6 +503,19 @@ window.__ModuleLoader__.load({
               })
             } catch {
               setToken({ available: false, configured: false, writable: false })
+            }
+          }, [tick])
+
+          const loadNpmToken = React.useCallback(async () => {
+            try {
+              const value = await callHost('token', { action: 'status', service: 'npm' })
+              setNpmToken({
+                available: value?.available !== false,
+                configured: value?.configured === true,
+                writable: value?.writable !== false,
+              })
+            } catch {
+              setNpmToken({ available: false, configured: false, writable: false })
             }
           }, [tick])
 
@@ -532,6 +595,10 @@ window.__ModuleLoader__.load({
           }, [loadToken])
 
           React.useEffect(() => {
+            loadNpmToken()
+          }, [loadNpmToken])
+
+          React.useEffect(() => {
             loadRepos()
           }, [loadRepos])
 
@@ -608,6 +675,44 @@ window.__ModuleLoader__.load({
             }
           }
 
+          async function saveNpmToken() {
+            if (!npmDraft.trim()) return
+            setNpmSaving(true)
+            setNotice(null)
+            try {
+              const value = await callHost('token', { action: 'save', service: 'npm', token: npmDraft })
+              setNpmToken({
+                available: true,
+                configured: value?.configured === true,
+                writable: value?.writable !== false,
+              })
+              setNpmDraft('')
+              setNotice({ kind: 'ok', text: t('npmSaved') })
+            } catch (error) {
+              setNotice({ kind: 'error', text: errorText(error) })
+            } finally {
+              setNpmSaving(false)
+            }
+          }
+
+          async function clearNpmToken() {
+            setNpmSaving(true)
+            setNotice(null)
+            try {
+              const value = await callHost('token', { action: 'clear', service: 'npm' })
+              setNpmToken({
+                available: true,
+                configured: value?.configured === true,
+                writable: value?.writable !== false,
+              })
+              setNotice({ kind: 'ok', text: t('clear') })
+            } catch (error) {
+              setNotice({ kind: 'error', text: errorText(error) })
+            } finally {
+              setNpmSaving(false)
+            }
+          }
+
           const pollJob = React.useCallback(
             (jobId, item) => {
               stopPoll()
@@ -639,7 +744,8 @@ window.__ModuleLoader__.load({
             [stopPoll, loadList, loadRepos],
           )
 
-          async function runPublish(item) {
+          async function runPublish(item, mode) {
+            const chain = mode !== 'github'
             const repoName = (
               item.repoSlug ? String(item.repoSlug).split('/')[1] : (repoNames[item.dir] ?? repoNameFrom(item.name))
             ).trim()
@@ -649,7 +755,12 @@ window.__ModuleLoader__.load({
             setNotice(null)
             setNow(Date.now())
             try {
-              const value = await callHost('publish', { dir: item.dir, repoName })
+              const value = await callHost('publish', {
+                dir: item.dir,
+                repoName,
+                skipNpm: !chain,
+                skipStore: !chain,
+              })
               if (!value?.jobId) throw new Error('no job id')
               setJob({
                 status: 'running',
@@ -697,6 +808,13 @@ window.__ModuleLoader__.load({
                 ok: Boolean(item.license || item.licenseFile),
                 label: t('checkLicense'),
                 hint: t('hintLicense'),
+              },
+              {
+                id: 'npm',
+                ok: item.npmOk === true,
+                pending: item.npmOk === undefined && item.npmName === undefined,
+                label: t('checkNpm'),
+                hint: item.npmHint || t('hintNpm'),
               },
             ]
           }
@@ -753,13 +871,33 @@ window.__ModuleLoader__.load({
 
           function card(item) {
             const checks = checksOf(item)
-            const ready = checks.every((check) => check.ok)
-            const failedHints = checks.filter((check) => !check.ok && check.hint).map((check) => check.hint)
+            const npmCheck = checks.find((check) => check.id === 'npm')
+            const ready = checks.filter((check) => check.id !== 'npm').every((check) => check.ok)
+            const npmReady = npmCheck?.ok === true
+            const npmPending = npmCheck?.pending === true
+            const failedHints = checks
+              .filter((check) => !check.ok && !check.pending && check.hint)
+              .map((check) => check.hint)
+            const pendingNpm = checks.some((check) => check.pending === true)
             const isBusy = busy === item.dir
             const isConfirming = confirming === item.dir
             const repoName = repoNames[item.dir] ?? repoNameFrom(item.name)
             const nameOk = /^[A-Za-z0-9._-]{1,100}$/.test(repoName)
             const canPublish = ready && nameOk && token.configured && !isBusy
+            const canShip = canPublish && npmReady && npmToken.configured
+            const shipWhy = !ready
+              ? t('notReady')
+              : !nameOk
+                ? t('badName')
+                : !token.configured
+                  ? t('tokenRequired')
+                  : !npmReady
+                    ? npmPending
+                      ? t('npmPending')
+                      : t('npmBlocked')
+                    : !npmToken.configured
+                      ? t('npmTokenRequired')
+                      : ''
             const isSubmitting = submitting === item.dir
             const isListed = Boolean(item.repoSlug && listed[item.repoSlug]?.listed)
             const hasRepo = Boolean(item.repoSlug)
@@ -817,14 +955,19 @@ window.__ModuleLoader__.load({
                 checks.map((check) =>
                   h(
                     'span',
-                    { className: 'dsgh-check ' + (check.ok ? 'ok' : 'bad'), key: check.id, title: check.ok ? '' : check.hint },
-                    (check.ok ? '✓ ' : '✗ ') + check.label,
+                    {
+                      className: 'dsgh-check ' + (check.ok ? 'ok' : check.pending ? 'idle' : 'bad'),
+                      key: check.id,
+                      title: check.ok ? '' : check.hint,
+                    },
+                    (check.ok ? '✓ ' : check.pending ? '… ' : '✗ ') + check.label,
                   ),
                 ),
               ),
               failedHints.length
                 ? h('ul', { className: 'dsgh-hints' }, failedHints.map((hint) => h('li', { key: hint }, hint)))
                 : null,
+              pendingNpm ? h('p', { className: 'dsgh-hint' }, t('npmPending')) : null,
               !hasRepo
                 ? h(
                     'div',
@@ -856,17 +999,41 @@ window.__ModuleLoader__.load({
                       {
                         type: 'button',
                         className: 'dsgh-btn primary',
+                        disabled: !canShip,
+                        title: canShip ? '' : shipWhy,
+                        onClick: () => {
+                          setConfirmMode('chain')
+                          setConfirming(isConfirming ? null : item.dir)
+                        },
+                      },
+                      isBusy ? t('busy') : t('ship'),
+                    )
+                  : null,
+                !hasRepo
+                  ? h(
+                      'button',
+                      {
+                        type: 'button',
+                        className: 'dsgh-btn small',
                         disabled: !canPublish,
                         title: !ready ? t('notReady') : !nameOk ? t('badName') : !token.configured ? t('tokenRequired') : '',
-                        onClick: () => setConfirming(isConfirming ? null : item.dir),
+                        onClick: () => {
+                          setConfirmMode('github')
+                          setConfirming(isConfirming ? null : item.dir)
+                        },
                       },
-                      isBusy ? t('busy') : t('publish'),
+                      t('githubOnly'),
                     )
                   : null,
                 !hasRepo && isConfirming
                   ? h(
                       'button',
-                      { type: 'button', className: 'dsgh-btn danger', disabled: isBusy, onClick: () => runPublish(item) },
+                      {
+                        type: 'button',
+                        className: 'dsgh-btn danger',
+                        disabled: isBusy,
+                        onClick: () => runPublish(item, confirmMode),
+                      },
                       t('confirming'),
                     )
                   : null,
@@ -878,11 +1045,36 @@ window.__ModuleLoader__.load({
                       'button',
                       {
                         type: 'button',
-                        className: 'dsgh-btn',
-                        disabled: isBusy,
-                        onClick: () => setConfirming(isConfirming ? null : item.dir),
+                        className: 'dsgh-btn primary',
+                        disabled: isBusy || !npmReady || !npmToken.configured,
+                        title: !npmReady
+                          ? npmPending
+                            ? t('npmPending')
+                            : t('npmBlocked')
+                          : !npmToken.configured
+                            ? t('npmTokenRequired')
+                            : '',
+                        onClick: () => {
+                          setConfirmMode('chain')
+                          setConfirming(isConfirming ? null : item.dir)
+                        },
                       },
-                      isBusy ? t('busy') : t('pushUpdate'),
+                      isBusy ? t('busy') : t('shipUpdate'),
+                    )
+                  : null,
+                hasRepo && needsPush
+                  ? h(
+                      'button',
+                      {
+                        type: 'button',
+                        className: 'dsgh-btn small',
+                        disabled: isBusy,
+                        onClick: () => {
+                          setConfirmMode('github')
+                          setConfirming(isConfirming ? null : item.dir)
+                        },
+                      },
+                      t('githubOnly'),
                     )
                   : null,
                 hasRepo && needsPush && isConfirming
@@ -892,7 +1084,7 @@ window.__ModuleLoader__.load({
                         type: 'button',
                         className: 'dsgh-btn danger',
                         disabled: isBusy,
-                        onClick: () => runPublish(item),
+                        onClick: () => runPublish(item, confirmMode),
                       },
                       t('confirmPush'),
                     )
@@ -958,7 +1150,29 @@ window.__ModuleLoader__.load({
               hasRepo && state?.needsPull
                 ? h('p', { className: 'dsgh-hint' }, t('pullFirst'))
                 : null,
-              isConfirming ? h('div', { className: 'dsgh-result' }, hasRepo ? t('confirmUpdate') : t('confirmText')) : null,
+              !npmReady && !npmPending
+                ? h(
+                    'p',
+                    { className: 'dsgh-hint' },
+                    t('npmBlocked') +
+                      ' · ' +
+                      (item.npmHint || '') +
+                      (item.npmSuggest && item.npmSuggest !== item.name ? ' · ' + t('npmSuggest') + ' ' + item.npmSuggest : ''),
+                  )
+                : null,
+              isConfirming
+                ? h(
+                    'div',
+                    { className: 'dsgh-result' },
+                    confirmMode === 'github'
+                      ? hasRepo
+                        ? t('confirmUpdateGithub')
+                        : t('confirmText')
+                      : hasRepo
+                        ? t('confirmUpdate')
+                        : t('confirmShip'),
+                  )
+                : null,
               submitInfo && submitInfo.dir === item.dir && submitInfo.prUrl
                 ? h(
                     'div',
@@ -1036,6 +1250,20 @@ window.__ModuleLoader__.load({
                       'div',
                       { className: 'dsgh-banner-text' },
                       t('account') + ' · ' + (job.result?.login || '') + ' · ' + t('repo') + ' · ' + (job.result?.repo || ''),
+                      job.result?.npm && job.result.npm.reason !== 'requested'
+                        ? '\n' +
+                          (job.result.npm.skipped
+                            ? t('npmSameVersion')
+                            : 'npm · ' + job.result.npm.name + '@' + job.result.npm.version)
+                        : '',
+                      job.result?.store && job.result.store.skipped === undefined
+                        ? '\n' +
+                          (job.result.store.prUrl
+                            ? t('storePr') + ' · #' + job.result.store.number
+                            : job.result.store.listed
+                              ? t('storeListedNow')
+                              : '')
+                        : '',
                     ),
                     h(
                       'div',
@@ -1056,6 +1284,20 @@ window.__ModuleLoader__.load({
                               onClick: () => copyText(job.result.repoUrl, 'repoUrl'),
                             },
                             copied === 'repoUrl' ? t('copied') : t('copyUrl'),
+                          )
+                        : null,
+                      job.result?.npm?.url
+                        ? h(
+                            'a',
+                            { className: 'dsgh-btn small', href: job.result.npm.url, target: '_blank', rel: 'noreferrer' },
+                            t('npmOpen'),
+                          )
+                        : null,
+                      job.result?.store?.prUrl
+                        ? h(
+                            'a',
+                            { className: 'dsgh-btn small', href: job.result.store.prUrl, target: '_blank', rel: 'noreferrer' },
+                            t('storePr') + ' #' + job.result.store.number,
                           )
                         : null,
                     ),
@@ -1223,6 +1465,48 @@ window.__ModuleLoader__.load({
                 h('a', { className: 'dsgh-btn', href: TOKEN_URL, target: '_blank', rel: 'noreferrer' }, t('tokenLink')),
               ),
               h('p', { className: 'dsgh-hint' }, t('tokenHint')),
+              h('h3', null, t('npmTitle')),
+              h(
+                'div',
+                { className: 'dsgh-token' },
+                h(
+                  'span',
+                  { className: 'dsgh-tag ' + (npmToken.configured ? 'on' : 'off') },
+                  npmToken.configured ? t('npmSaved') : t('npmMissing'),
+                ),
+                h('input', {
+                  className: 'dsgh-input',
+                  type: 'password',
+                  autoComplete: 'off',
+                  spellCheck: false,
+                  placeholder: t('npmPlaceholder'),
+                  value: npmDraft,
+                  disabled: npmSaving || !npmToken.writable,
+                  onChange: (event) => setNpmDraft(event.target.value),
+                  onKeyDown: (event) => {
+                    if (event.key === 'Enter') saveNpmToken()
+                  },
+                }),
+                h(
+                  'button',
+                  {
+                    type: 'button',
+                    className: 'dsgh-btn primary',
+                    disabled: npmSaving || !npmDraft.trim(),
+                    onClick: saveNpmToken,
+                  },
+                  npmSaving ? t('saving') : t('save'),
+                ),
+                npmToken.configured
+                  ? h(
+                      'button',
+                      { type: 'button', className: 'dsgh-btn danger', disabled: npmSaving, onClick: clearNpmToken },
+                      t('clear'),
+                    )
+                  : null,
+                h('a', { className: 'dsgh-btn', href: NPM_TOKEN_URL, target: '_blank', rel: 'noreferrer' }, t('npmLink')),
+              ),
+              h('p', { className: 'dsgh-hint' }, t('npmHint')),
             ),
             h(
               'div',

@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
-import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
+import { homedir, tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
 /**
@@ -15,6 +16,8 @@ import { join, resolve } from 'node:path'
  */
 
 const TOKEN_REF = 'DSH_GITHUB_PUBLISH_TOKEN'
+const NPM_TOKEN_REF = 'DSH_NPM_TOKEN'
+const NPM_REGISTRY = 'https://registry.npmjs.org/'
 const API = 'https://api.github.com'
 const TOPIC = 'dsh-plugin'
 const REPO_RE = /^[A-Za-z0-9._-]{1,100}$/
@@ -68,6 +71,47 @@ function repositoryOf(manifest) {
   return ''
 }
 
+const NPM_NAME_RE = /^(@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/
+
+/**
+ * npm 可发布性：1024store 的安装命令来自仓库 package.json 的 name，
+ * 所以名字必须真的能发到 registry.npmjs.org。
+ */
+function npmFacts(manifest) {
+  const name = String(manifest?.name || '').trim()
+  const legacy = name.startsWith('@local/')
+  const suggest = legacy ? name.slice('@local/'.length) : name
+  if (!name) return { name: '', ok: false, legacy, hint: 'package.json 缺少 name', suggest }
+  if (manifest?.private === true) {
+    return {
+      name,
+      ok: false,
+      legacy,
+      hint: 'package.json 里 private: true，npm 拒绝发布；删掉这个字段再发',
+      suggest,
+    }
+  }
+  if (legacy) {
+    return {
+      name,
+      ok: false,
+      legacy,
+      hint: '“@local” 不是你能占用的 npm scope：改成你自己的 scope（如 @yourname/' + suggest + '）或直接用 ' + suggest,
+      suggest,
+    }
+  }
+  if (!NPM_NAME_RE.test(name)) {
+    return {
+      name,
+      ok: false,
+      legacy,
+      hint: '包名不是合法的 npm 名（只能小写字母、数字、- . _，可带一个 @scope/）',
+      suggest,
+    }
+  }
+  return { name, ok: true, legacy, hint: '', suggest: name }
+}
+
 function inspectPlugin(dir) {
   const manifest = readJson(join(dir, 'package.json'))
   if (!manifest || typeof manifest !== 'object') return undefined
@@ -80,6 +124,7 @@ function inspectPlugin(dir) {
   const readmeFile = ['README.md', 'readme.md', 'README.zh.md', 'README', 'readme'].find((name) =>
     existsSync(join(dir, name)),
   )
+  const npm = npmFacts(manifest)
   return {
     name: String(manifest.name || ''),
     version: String(manifest.version || ''),
@@ -90,6 +135,10 @@ function inspectPlugin(dir) {
     repository: repositoryOf(manifest),
     hasPatch: Boolean(patchPath && existsSync(patchPath)),
     patchPath: patchPath || '',
+    npmName: npm.name,
+    npmOk: npm.ok,
+    npmHint: npm.hint,
+    npmSuggest: npm.suggest,
   }
 }
 
@@ -196,48 +245,48 @@ function defaultRepoName(packageName) {
     .slice(0, 100)
 }
 
-async function credentialStatus(ctx) {
+async function credentialStatus(ctx, ref = TOKEN_REF) {
   const credentials = ctx.get('credentials')
   if (!credentials) return { available: false, configured: false, writable: false }
   try {
-    const info = await credentials.describe(TOKEN_REF)
+    const info = await credentials.describe(ref)
     return { available: true, configured: info?.configured === true, writable: info?.writable !== false }
   } catch {
     return { available: true, configured: false, writable: false }
   }
 }
 
-async function saveToken(ctx, token) {
+async function saveToken(ctx, token, ref = TOKEN_REF) {
   const credentials = ctx.get('credentials')
-  if (!credentials) return fail('no-credentials', '此环境没有可用的凭据服务，无法保存 GitHub token')
+  if (!credentials) return fail('no-credentials', '此环境没有可用的凭据服务，无法保存 token')
   const value = typeof token === 'string' ? token.trim() : ''
   if (value.length < 20 || /\s/.test(value)) {
     return fail('bad-token', 'token 看起来不合法（至少 20 个字符，且不能包含空白）')
   }
   try {
-    await credentials.set(TOKEN_REF, value)
+    await credentials.set(ref, value)
   } catch (error) {
     return fail('save-failed', '保存 token 失败：' + String(error?.message || error))
   }
-  return { ok: true, value: await credentialStatus(ctx) }
+  return { ok: true, value: await credentialStatus(ctx, ref) }
 }
 
-async function clearToken(ctx) {
+async function clearToken(ctx, ref = TOKEN_REF) {
   const credentials = ctx.get('credentials')
   if (!credentials) return fail('no-credentials', '此环境没有可用的凭据服务')
   try {
-    await credentials.unset(TOKEN_REF)
+    await credentials.unset(ref)
   } catch (error) {
     return fail('clear-failed', '清除 token 失败：' + String(error?.message || error))
   }
-  return { ok: true, value: await credentialStatus(ctx) }
+  return { ok: true, value: await credentialStatus(ctx, ref) }
 }
 
-async function readToken(ctx) {
+async function readToken(ctx, ref = TOKEN_REF) {
   const credentials = ctx.get('credentials')
   if (!credentials) return undefined
   try {
-    const resolved = await credentials.resolve(TOKEN_REF)
+    const resolved = await credentials.resolve(ref)
     return resolved && nonEmpty(resolved.value) ? resolved.value : undefined
   } catch {
     return undefined
@@ -292,6 +341,128 @@ async function resolveGit(ctx) {
     if (existsSync(candidate)) return candidate
   }
   return 'git'
+}
+
+/**
+ * 宿主的 node/pnpm 自带在 ~/.dsh/dsh-runtimes/<runtime>/dependencies 下，
+ * 没有全局 npm 时用它们跑 pnpm publish。
+ */
+function bundledToolchain() {
+  const home = process.env.USERPROFILE || process.env.HOME || homedir()
+  const root = join(home, '.dsh', 'dsh-runtimes')
+  if (!existsSync(root)) return undefined
+  try {
+    for (const entry of readdirSync(root, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue
+      const deps = join(root, entry.name, 'dependencies')
+      const node = join(deps, 'node', 'bin', 'node.exe')
+      const pnpm = join(deps, 'pnpm', 'bin', 'pnpm.mjs')
+      if (existsSync(node) && existsSync(pnpm)) return { node, pnpm }
+    }
+  } catch {
+    /* ignore */
+  }
+  return undefined
+}
+
+async function resolveNpmTool(ctx) {
+  const subprocess = ctx.get('subprocess')
+  for (const name of ['pnpm', 'npm']) {
+    try {
+      const found = await subprocess?.resolveExecutable?.(name)
+      if (typeof found === 'string' && found) return { kind: name, command: found }
+    } catch {
+      /* ignore */
+    }
+  }
+  const bundled = bundledToolchain()
+  if (bundled) return { kind: 'pnpm', command: bundled.node, preArgs: [bundled.pnpm] }
+  return undefined
+}
+
+function npmPathOf(name) {
+  const text = String(name || '')
+  return text.startsWith('@') ? text.replace('/', '%2f') : encodeURIComponent(text)
+}
+
+async function npmWhoami(token) {
+  try {
+    const response = await fetch(NPM_REGISTRY + '-/whoami', {
+      headers: { authorization: 'Bearer ' + token, accept: 'application/json' },
+      signal: AbortSignal.timeout(10000),
+    })
+    if (response.status === 200) {
+      const data = await response.json()
+      return typeof data?.username === 'string' ? data.username : ''
+    }
+    if (response.status === 401) return 'unauthorized'
+  } catch {
+    /* offline or blocked */
+  }
+  return undefined
+}
+
+async function npmVersionExists(name, version) {
+  try {
+    const response = await fetch(NPM_REGISTRY + npmPathOf(name) + '/' + encodeURIComponent(version), {
+      signal: AbortSignal.timeout(8000),
+    })
+    return response.status === 200
+  } catch {
+    return false
+  }
+}
+
+async function runNpmPublish(ctx, tool, dir, token, jobId) {
+  const subprocess = ctx.get('subprocess')
+  if (!subprocess?.spawn) throw new Error('当前环境没有可用的进程服务')
+  const workDir = join(tmpdir(), 'dsh-npm-' + jobId)
+  mkdirSync(workDir, { recursive: true })
+  const npmrcPath = join(workDir, '.npmrc')
+  writeFileSync(
+    npmrcPath,
+    'registry=' + NPM_REGISTRY + '\n//registry.npmjs.org/:_authToken=' + token + '\nalways-auth=true\n',
+  )
+  const base = tool.preArgs ? [tool.command, ...tool.preArgs] : [tool.command]
+  const flags = ['publish', '--access', 'public', '--registry', NPM_REGISTRY]
+  if (tool.kind === 'pnpm') flags.push('--no-git-checks')
+  try {
+    const handle = subprocess.spawn({
+      argv: [...base, ...flags],
+      cwd: dir,
+      stdio: {
+        stdin: 'ignore',
+        stdout: { maxBytes: MAX_OUTPUT },
+        stderr: { maxBytes: MAX_OUTPUT },
+      },
+      graceMs: 180000,
+      env: {
+        ...process.env,
+        NPM_CONFIG_USERCONFIG: npmrcPath,
+        NPM_CONFIG_CACHE: join(workDir, 'cache'),
+        NPM_CONFIG_REGISTRY: NPM_REGISTRY,
+        NPM_CONFIG_FUND: 'false',
+        NPM_CONFIG_UPDATE_NOTIFIER: 'false',
+        CI: '1',
+      },
+    })
+    const outcome = await handle.done
+    return {
+      exitCode: typeof outcome?.exitCode === 'number' ? outcome.exitCode : null,
+      output: collect(handle),
+    }
+  } finally {
+    try {
+      unlinkSync(npmrcPath)
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+function recordStep(job, label, ok, output) {
+  job.steps.push({ label, ok, output: String(output || '').slice(-2000) })
+  return ok
 }
 
 function collect(handle) {
@@ -509,7 +680,7 @@ async function startPublish(ctx, payload) {
   pruneJobs()
   const job = { id: randomUUID(), status: 'running', steps: [], startedAt: Date.now() }
   jobs.set(job.id, job)
-  publish(ctx, job, payload)
+  publishAll(ctx, job, payload)
     .then((result) => {
       if (result?.ok === true) {
         job.status = 'done'
@@ -843,6 +1014,100 @@ async function syncStatus(ctx, payload) {
   return { ok: true, value: { dirs: out } }
 }
 
+async function npmPublish(ctx, job, payload) {
+  const dir = typeof payload?.dir === 'string' ? resolve(payload.dir) : ''
+  if (!dir) return fail('bad-request', '缺少插件目录', { steps: job.steps })
+  const { candidates } = listCandidates(ctx)
+  const candidate = candidates.find((entry) => resolve(entry.dir) === dir)
+  if (!candidate) {
+    return fail('not-linked', '只能发布本机目录里的插件（Profile link/file 或工作区 plugins 目录）', { steps: job.steps })
+  }
+  if (!candidate.npmOk) {
+    return fail('npm-name', candidate.npmHint || 'npm 包名不可发布', {
+      steps: job.steps,
+      suggest: candidate.npmSuggest,
+    })
+  }
+  const name = candidate.npmName
+  const version = String(candidate.version || '')
+  if (!/^\d+\.\d+\.\d+/.test(version)) {
+    return fail('npm-version', 'package.json 的 version 不是合法 semver', { steps: job.steps })
+  }
+  const token = await readToken(ctx, NPM_TOKEN_REF)
+  if (!token) return fail('no-npm-token', '还没有保存 npm token', { steps: job.steps })
+  const npmUrl = 'https://www.npmjs.com/package/' + name
+  if (await npmVersionExists(name, version)) {
+    recordStep(job, 'npm · ' + name + '@' + version + ' 已在 registry，跳过', true, '')
+    return { ok: true, value: { skipped: true, name, version, url: npmUrl } }
+  }
+  const who = await npmWhoami(token)
+  if (who === 'unauthorized') {
+    return fail('npm-auth', 'npm token 无效或已过期（registry 返回 401），重新生成一个 Automation token', {
+      steps: job.steps,
+    })
+  }
+  if (who) {
+    const scope = name.startsWith('@') ? name.slice(1, name.indexOf('/')) : ''
+    const note = scope && scope !== who ? '（scope @' + scope + ' 与账号 ' + who + ' 不同，需要你是该组织的成员）' : ''
+    recordStep(job, 'npm · 账号 ' + who, true, note)
+  }
+  const tool = await resolveNpmTool(ctx)
+  if (!tool) return fail('no-npm-tool', '找不到可用的 pnpm/npm 命令，也没有可用的宿主运行时', { steps: job.steps })
+  const result = await runNpmPublish(ctx, tool, dir, token, job.id)
+  if (result.exitCode !== 0) {
+    return fail('npm-publish-failed', 'npm 发布失败\n' + result.output, { steps: job.steps })
+  }
+  recordStep(job, 'npm · 发布 ' + name + '@' + version, true, '')
+  for (let attempt = 0; attempt < 6; attempt++) {
+    if (await npmVersionExists(name, version)) {
+      recordStep(job, 'npm · registry 已能查到该版本', true, name + '@' + version)
+      return { ok: true, value: { name, version, url: npmUrl } }
+    }
+    await sleep(3000)
+  }
+  return fail(
+    'npm-verify',
+    'npm 发布命令成功了，但 registry 还没查到 ' + name + '@' + version + '，通常再等 1–2 分钟。',
+    { steps: job.steps },
+  )
+}
+
+/**
+ * 一条龙：GitHub 发布 → npm 发布 → 1024store 目录 PR。
+ * 任何一步失败就停在当场，前面的步骤输出都留在 job.steps 里。
+ */
+async function publishAll(ctx, job, payload) {
+  const initial = await publish(ctx, job, payload)
+  if (initial?.ok !== true) return initial
+  const result = { ...initial.value }
+
+  if (payload?.skipNpm === true) {
+    recordStep(job, 'npm · 已跳过', true, '')
+    result.npm = { skipped: true, reason: 'requested' }
+  } else {
+    const npm = await npmPublish(ctx, job, payload)
+    if (npm?.ok !== true) return { ok: false, error: { ...npm.error, steps: job.steps } }
+    result.npm = npm.value
+  }
+
+  if (payload?.skipStore === true) {
+    recordStep(job, '1024store · 已跳过', true, '')
+    result.store = { skipped: true, reason: 'requested' }
+    return { ok: true, value: result }
+  }
+
+  const store = await submitToStore(ctx, payload)
+  if (store?.ok !== true) return { ok: false, error: { ...store.error, steps: job.steps } }
+  recordStep(
+    job,
+    '1024store · ' + (store.value?.prUrl ? '已开目录 PR' : '已在目录中'),
+    true,
+    store.value?.prUrl || store.value?.url || '',
+  )
+  result.store = store.value
+  return { ok: true, value: result }
+}
+
 function route(ctx, path, handler) {
   const connection = ctx.get('connection')
   if (!connection?.fetch?.register) return undefined
@@ -887,9 +1152,10 @@ export function apply(ctx) {
   ctx.effect(
     () =>
       route(ctx, '/api/github-publish/token', async (payload) => {
-        if (payload?.action === 'save') return saveToken(ctx, payload.token)
-        if (payload?.action === 'clear') return clearToken(ctx)
-        return { ok: true, value: await credentialStatus(ctx) }
+        const ref = payload?.service === 'npm' ? NPM_TOKEN_REF : TOKEN_REF
+        if (payload?.action === 'save') return saveToken(ctx, payload.token, ref)
+        if (payload?.action === 'clear') return clearToken(ctx, ref)
+        return { ok: true, value: await credentialStatus(ctx, ref) }
       }),
     'github-publish: token route',
   )
